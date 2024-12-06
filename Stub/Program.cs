@@ -11,7 +11,8 @@ using Microsoft.Extensions.Logging;
 using Schema.DbContexts;
 using Stub.Seed;
 
-string connectionString = string.Empty;
+var connectionString = string.Empty;
+const string facultyName = "Visual Communication Design";
 
 var host = Host.CreateDefaultBuilder(args)
 	.ConfigureAppConfiguration((context, config) =>
@@ -22,11 +23,14 @@ var host = Host.CreateDefaultBuilder(args)
 		 */
 		// config.AddUserSecrets<Program>();
 		
+    //  Comment out if running with CLI command: dotnet run or dotnet run --environment Development
+    //  Leave uncommented if running in Visual Studio / Rider and you have your local ASPNETCORE_ENVIRONMENT set to Development 
 		var projectPath = Directory.GetParent(Directory.GetParent(Directory.GetCurrentDirectory()).Parent.FullName).FullName;
 		config.SetBasePath(projectPath);
-		
+	
+
 		//  Pick up configuration settings.
-		config.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
+		config.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);	
 	})
 	.ConfigureLogging(logging =>
 	{
@@ -70,6 +74,20 @@ using (var scope = host.Services.CreateScope())
 		context.Faculties.AddRange(FacultiesPeopleSeed.FacilitiesData);
 		await context.SaveChangesAsync();
 	}
+
+	/*
+	 * Execute stored procedure via Entity Framework.
+	 */
+	var peopleDerivedFromStoredProcedure = await context.People
+		.FromSqlInterpolated($"EXEC [dbo].[uspGetPeopleByFaculty] {facultyName}")
+		.ToListAsync();
+	
+	Console.WriteLine("\nStored Procedure Execution:\n");
+	
+	peopleDerivedFromStoredProcedure.ForEach(p =>
+	{
+		Console.WriteLine($"Person derived form SP with Entity Framework - Name: {p.Name}");
+	});
 }
 
 /*
@@ -110,6 +128,12 @@ await using (var sqlConnection = new SqlConnection(connectionString ?? throw new
 	//}, splitOn: "FacultyId")); //  why is this recommended. Works without it?
 	})).ToList();
 	
+	//  Same Stored Procedure executed via Dapper.
+	var dapperSpPeople = (await sqlConnection.QueryAsync(
+			"EXEC [dbo].[uspGetPeopleByFaculty] @FacultyName", 
+			new { FacultyName = facultyName }))
+		.ToList();
+	
 	await sqlConnection.CloseAsync();
 	
 	Console.WriteLine("\nPrint Person result:\n");
@@ -131,7 +155,13 @@ await using (var sqlConnection = new SqlConnection(connectionString ?? throw new
 	{
 		Console.WriteLine($"Faculty - name: {p.Key}, Has this many people: {p.Count()}");
 	});
-
+	
+	Console.WriteLine("\nPrint People derived from stored procedure:\n");
+	
+	dapperSpPeople.ForEach(p =>
+	{
+		Console.WriteLine($"Person derived form SP with Dapper - Name: {p.Name}");
+	});
 }
 
 Console.WriteLine("Hello, Dapper!");
